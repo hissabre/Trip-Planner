@@ -67,7 +67,7 @@ button{border:1px solid var(--ln);background:var(--card);border-radius:10px;padd
 <script>(()=>{
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS=(k,v)=>{try{if(v===undefined)return JSON.parse(localStorage.getItem(k));localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}};
-const CFG={endpoint:''}; // paste your Cloudflare Worker URL here for GitHub use
+const CFG={endpoint:'https://djibas-trip.hamadoun-issabre.workers.dev'}; // paste your Cloudflare Worker URL here for GitHub use
 const EP=()=>P.ep||CFG.endpoint,hasAI=()=>!!(S||EP()||window.puter);
 function status(){$('#ai').textContent=(navigator.onLine?'':'📴 Offline · saved trips still work · ')+(S?'✨ AI ready':EP()?'🔌 Using your AI endpoint':window.puter?'🆓 Free AI via Puter (sign-in popup)':'🌍 Free map-data mode')}
 ['load','online','offline'].forEach(v=>window.addEventListener(v,status));
