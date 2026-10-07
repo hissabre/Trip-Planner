@@ -60,16 +60,16 @@ button{border:1px solid var(--ln);background:var(--card);border-radius:10px;padd
 <textarea id="cust" rows="3" placeholder="14:00 Spa booking, confirmed, cash only&#10;Meeting at 14h on Tue 13th&#10;Champions League game&#10;No food or water after midnight Sunday"></textarea>
 <button class="pri" id="go">Plan my trip 🎲</button>
 <p class="mu" id="msg"></p>
-<details class="mu"><summary>⚙️ Advanced (for GitHub use)</summary><p>AI endpoint URL, used when this runs outside Claude. It must accept POST {prompt} and return {text}.</p><input id="ep" placeholder="https://your-proxy.example.com/plan"></details>
+
 </section>
 <section id="trips" hidden></section><section id="view" hidden></section>
 </main><div id="sh" hidden></div><div id="toast" hidden></div>
 <script>(()=>{
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS=(k,v)=>{try{if(v===undefined)return JSON.parse(localStorage.getItem(k));localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}};
-const CFG={endpoint:'https://djibas-trip.hamadoun-issabre.workers.dev'}; // paste your Cloudflare Worker URL here for GitHub use
-const EP=()=>P.ep||CFG.endpoint,hasAI=()=>!!(S||EP()||window.puter);
-function status(){$('#ai').textContent=(navigator.onLine?'':'📴 Offline · saved trips still work · ')+(S?'✨ AI ready':EP()?'🔌 Using your AI endpoint':window.puter?'🆓 Free AI via Puter (sign-in popup)':'🌍 Free map-data mode')}
+const CFG={endpoint:'https://djibas-trip.hamadoun-issabre.workers.dev'};
+const EP=()=>CFG.endpoint,hasAI=()=>!!(S||EP()||window.puter);
+function status(){$('#ai').textContent=(navigator.onLine?'':'📴 Offline · saved trips still work · ')+(S?'✨ AI ready':EP()?'✨ AI connected':window.puter?'🆓 Free AI via Puter (sign-in popup)':'🌍 Free map-data mode')}
 ['load','online','offline'].forEach(v=>window.addEventListener(v,status));
 let P=LS('dj_p')||{},T=LS('dj_t')||[],cur=null,S=null;
 const sel=new Set(P.ints||[]),dsel=new Set(P.diet||[]),BASE=['🏛️ Landmarks','🖼️ Museums','🌳 Parks & nature','🛍️ Shopping','☕ Cafés','🧋 Bubble tea & treats','🍸 Nightlife','⚽ Sports','🎭 Local culture','🦁 Zoo & animals','📸 Photo spots','🏖️ Beaches'],DIET=['Halal','Vegan','Vegetarian','Gluten-free'];
@@ -78,7 +78,18 @@ const boot=(async()=>{try{if(window.claude)S=await Promise.race([claude.use('sam
 status()})();
 const parse=t=>{t=t.replace(/```json|```/g,'');return JSON.parse(t.slice(t.search(/[\[{]/),Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'))+1))};
 async function ask(p,o={}){await boot;if(S)return S.json(p,o);
-if(EP()){const r=await fetch(EP(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,quick:o.modelTier=='quick'})}),j=await r.json();if(j.error)throw{message:j.error};return typeof j.text=='string'?parse(j.text):j}
+if(EP()){
+try{
+const r=await fetch(EP(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,quick:o.modelTier=='quick'})});
+let j={};try{j=await r.json()}catch(e){throw{message:'The AI server returned an invalid response ('+r.status+').'}}
+if(!r.ok)throw{message:j.error||('AI server returned HTTP '+r.status)};
+if(j.error)throw{message:j.error};
+if(typeof j.text!='string'||!j.text.trim())throw{message:'The AI server returned no text.'};
+return parse(j.text)
+}catch(e){
+if(e&&e.message)return e;
+throw{message:'Could not reach the AI server. Check your connection and try again.'}
+}}
 if(window.puter){const x=await puter.ai.chat(p,{model:'claude-sonnet-4'}),c=x&&x.message?x.message.content:x;return parse(typeof c=='string'?c:Array.isArray(c)?c.map(y=>y.text||'').join(''):String(x))}
 throw{code:'none'}}
 const err=e=>({none:"AI isn't available in this view. Open Djiba's Trip inside the Claude app.",not_granted:'AI access was declined. Tap Plan again and allow it.',invalid_json:'The AI reply was cut off. Try fewer days or a lighter pace.',rate_limited:'Too many requests. Wait a moment.'}[e&&e.code]||'AI error: '+((e&&(e.message||e.code))||e));
@@ -103,7 +114,7 @@ $('#stay').addEventListener('input',()=>{stayLL=null;clearTimeout(sgT);const q=$
 sgT=setTimeout(async()=>{try{const d=$('#dest').value.trim(),u='https://photon.komoot.io/api/?limit=5&q='+encodeURIComponent(q+(d&&!q.toLowerCase().includes(d.toLowerCase())?' '+d:'')),j=await(await fetch(u)).json();
 sugs=j.features.map(f=>{const o=f.properties;return{t:[o.name,[o.housenumber,o.street].filter(Boolean).join(' '),o.district||o.suburb,o.city,o.country].filter(Boolean).filter((v,i,a)=>a.indexOf(v)==i).join(', '),lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0]}});
 $('#sug').innerHTML=sugs.map((x,i)=>`<button data-sg="${i}">📍 ${esc(x.t)}</button>`).join('');$('#sug').hidden=!sugs.length}catch(e){}},350)});
-$('#go').onclick=gen;$('#ep').value=P.ep||'';$('#lang').value=P.lang||'English';$('#pray').checked=!!P.pray;$('#who').value=P.who||'Solo';$('#bud').value=P.bud||'Mid-range';try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}$('#ep').onchange=e=>{P.ep=e.target.value.trim();LS('dj_p',P)};
+$('#go').onclick=gen;$('#lang').value=P.lang||'English';$('#pray').checked=!!P.pray;$('#who').value=P.who||'Solo';$('#bud').value=P.bud||'Mid-range';try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 $('#dest').addEventListener('change',async()=>{const d=$('#dest').value.trim(),k=d.toLowerCase();chips();if(!d||(P.x||{})[k]||!(S||EP()))return;
 try{const r=await ask(`List 8 travel interest options specific to ${d} (famous local attractions, food culture, events, activities). Each is an emoji plus 2-4 words. Return ONLY a JSON array of strings.`,{modelTier:'quick'});
 if(Array.isArray(r)){P.x={...(P.x||{}),[k]:r.slice(0,8).map(String)};LS('dj_p',P);chips()}}catch(e){}});
@@ -135,7 +146,12 @@ days.forEach((d,i)=>{d.title=(r.days[i]||{}).title||'';d.items=((r.days[i]||{}).
 if(days.some(d=>!d.items.length))throw{code:'invalid_json'};
 if(NB)days.forEach(d=>d.items.forEach(x=>{const c=NB.idx.get(x.title.toLowerCase());if(c){x.lat=c.lat;x.lon=c.lon;x.oh=c.oh;x.site=c.site}}));
 const t={id:Date.now(),dest,mode,days,ctr:NB?NB.ctr:null,tz:WX&&WX.tz,wx:WX&&WX.d,base:stayLL||(NB&&NB.base)||(r.stay&&+r.stay.lat?{lat:+r.stay.lat,lon:+r.stay.lon}:null)};sched(t);T.unshift(t);LS('dj_t',T);cur=t;msg.textContent='';view()}
-catch(e){console.error(e);msg.textContent=err(e)+' Switching to the free planner…';return genFree(dest,a,b,stay,mode,n,diet,ints)}
+catch(e){
+console.error(e);
+msg.textContent=err(e);
+$('#go').disabled=false;
+return;
+}
 $('#go').disabled=false}
 async function repl(d,i,wish){if(!hasAI())return replFree(d,i,wish);const t=cur,day=t.days[d],it=day.items[i],bt=document.querySelector(`[data-a=rp][data-d="${d}"][data-i="${i}"]`);if(bt)bt.textContent='…';
 const b4=conf(t,d).length;try{(it.rej=it.rej||[]).push(it.title);
