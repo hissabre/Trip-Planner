@@ -76,7 +76,7 @@ const sel=new Set(P.ints||[]),dsel=new Set(P.diet||[]),BASE=['🏛️ Landmarks'
 const SP={transit:[20,12],uber:[30,6],drive:[30,10]};
 const boot=(async()=>{try{if(window.claude)S=await Promise.race([claude.use('sample'),new Promise(r=>setTimeout(r,12000))])||null}catch(e){}
 status()})();
-const parse=t=>{t=t.replace(/```json|```/g,'');return JSON.parse(t.slice(t.search(/[\[{]/),Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'))+1))};
+const parse=t=>{t=String(t||'').replace(/```json|```/gi,'').trim();const s=t.search(/[\[{]/);if(s<0)throw new Error('No JSON object found');const e=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'));if(e<s)throw new Error('Incomplete JSON');return JSON.parse(t.slice(s,e+1))};
 async function ask(p,o={}){await boot;if(S)return S.json(p,o);
 if(EP()){
 try{
@@ -85,14 +85,32 @@ let j={};try{j=await r.json()}catch(e){throw{message:'The AI server returned an 
 if(!r.ok)throw{message:j.error||('AI server returned HTTP '+r.status)};
 if(j.error)throw{message:j.error};
 if(typeof j.text!='string'||!j.text.trim())throw{message:'The AI server returned no text.'};
-return parse(j.text)
+let raw=j.text.trim();
+try{return parse(raw)}
+catch(parseErr){
+  const cleaned=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+  try{return parse(cleaned)}
+  catch(e2){throw{code:'invalid_json',message:'The AI returned text, but it was not valid itinerary JSON.'}}
+}
 }catch(e){
 if(e&&e.message)return e;
 throw{message:'Could not reach the AI server. Check your connection and try again.'}
 }}
 if(window.puter){const x=await puter.ai.chat(p,{model:'claude-sonnet-4'}),c=x&&x.message?x.message.content:x;return parse(typeof c=='string'?c:Array.isArray(c)?c.map(y=>y.text||'').join(''):String(x))}
 throw{code:'none'}}
-const err=e=>({none:"AI isn't available in this view. Open Djiba's Trip inside the Claude app.",not_granted:'AI access was declined. Tap Plan again and allow it.',invalid_json:'The AI reply was cut off. Try fewer days or a lighter pace.',rate_limited:'Too many requests. Wait a moment.'}[e&&e.code]||'AI error: '+((e&&(e.message||e.code))||e));
+function normalizePlan(r){
+  if(Array.isArray(r)) return {days:r};
+  if(r&&Array.isArray(r.days)) return r;
+  if(r&&r.trip&&Array.isArray(r.trip.days)) return {...r,days:r.trip.days};
+  if(r&&r.itinerary&&Array.isArray(r.itinerary.days)) return {...r,days:r.itinerary.days};
+  if(r&&r.plan&&Array.isArray(r.plan.days)) return {...r,days:r.plan.days};
+  if(r&&typeof r==='object'){
+    const key=Object.keys(r).find(k=>r[k]&&Array.isArray(r[k].days));
+    if(key) return {...r,days:r[key].days};
+  }
+  throw {code:'invalid_plan',message:'The AI returned a response, but it did not contain a valid "days" itinerary.'};
+}
+const err=e=>({none:"AI isn't available in this view. Open Djiba's Trip inside the Claude app.",not_granted:'AI access was declined. Tap Plan again and allow it.',invalid_json:'The AI reply was cut off. Try fewer days or a lighter pace.',rate_limited:'Too many requests. Wait a moment.',invalid_plan:'The AI returned an invalid itinerary format. Please try again.'}[e&&e.code]||'AI error: '+((e&&(e.message||e.code))||e));
 function chips(){const x=(P.x||{})[$('#dest').value.trim().toLowerCase()]||[],h=(l,s,g)=>l.map(k=>`<button class="chip ${s.has(k)?'on':''}" data-g="${g}" data-k="${esc(k)}">${esc(k)}</button>`).join('');
 $('#ints').innerHTML=h([...new Set([...x,...BASE,...sel])],sel,'i');$('#diet').innerHTML=h(DIET,dsel,'d')}
 const fm=m=>String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
@@ -139,11 +157,17 @@ ${wxLine}Pace: exactly ${n} main activities per day, plus lunch, one mid-afterno
 Fixed plans, bookings and constraints from the traveller (treat as CONFIRMED: keep their stated times and details exactly and plan everything else around them): ${must.join('; ')||'none'}. Already done on earlier trips (avoid): ${seen.join('; ')||'none'}.
 ${nbLine}RULES: Every stop must be a REAL, well-known, currently operating place named exactly (a named restaurant, zoo, museum, park, market, shop). NEVER generic names like "local museum" or "iconic landmark". Give a street or area in addr. Each day stays within 1-2 adjacent neighbourhoods, ordered geographically with no backtracking or crossing the city. Lunch 12:00-14:00 at a specific restaurant that really fits the dietary needs (only if confident), treat 15:30-17:00 near the previous stop, dinner 19:00-20:30. Outdoor and views at good light, respect usual opening days and hours, vary the energy (never stack similar attractions). For matches/concerts name the real venue and say fixtures need checking. Prefer places you are sure exist. "at" is the realistic start time HH:MM of EVERY item, in order, leaving room for travel.
 DETAIL LEVEL: write like a premium concierge itinerary. Each item gets "detail": 1-2 concrete sentences (what to do or order, how long, how to get there e.g. taxi about 15 min, price and payment such as cash only, booking or arrival advice, halal or vegan status, Sunday/holiday hours to verify). "warn": only for a real risk or conflict (overlapping fixed plans, closing time, fasting rule, too far or too tight, weather) and always say what to do (call, shift, skip); else "". "confirmed": true only for the traveller's own fixed plans. "type" is one of sport, visit, wellness, food, cafe, health, business, transit, shopping. Each day gets "title": "Weekday date - Area A > Area B > Area C". Check every pair of consecutive items for realistic travel time and flag clashes in "warn". Write ALL text in ${lang}.
-Return ONLY compact JSON: {"stay":{"lat":0.0000,"lon":0.0000},"days":[{"date":"YYYY-MM-DD","title":"","items":[{"at":"HH:MM","type":"","title":"","emoji":"","area":"","addr":"","dur":90,"detail":"","warn":"","confirmed":false,"lat":0.0000,"lon":0.0000}]}]}`;
+Return ONLY valid compact JSON with NO markdown fences and NO explanatory text. The ROOT object MUST contain a top-level "days" array: {"stay":{"lat":0.0000,"lon":0.0000},"days":[{"date":"YYYY-MM-DD","title":"","items":[{"at":"HH:MM","type":"","title":"","emoji":"","area":"","addr":"","dur":90,"detail":"","warn":"","confirmed":false,"lat":0.0000,"lon":0.0000}]}]}`;
 $('#go').disabled=true;msg.textContent='Thinking… finding the best spots (up to a minute) ⏳';
-try{const r=await ask(prompt,{onText:({text})=>{const c=(text.match(/"title"/g)||[]).length;if(c)msg.textContent='Found '+c+' places… ⏳'}});
-days.forEach((d,i)=>{d.title=(r.days[i]||{}).title||'';d.items=((r.days[i]||{}).items||[]).map(x=>norm(x,dest))});
-if(days.some(d=>!d.items.length))throw{code:'invalid_json'};
+try{let r=await ask(prompt,{onText:({text})=>{const c=(text.match(/"title"/g)||[]).length;if(c)msg.textContent='Found '+c+' places… ⏳'}});
+r=normalizePlan(r);
+if(!Array.isArray(r.days)||!r.days.length)throw{code:'invalid_plan',message:'The AI did not return any itinerary days.'};
+days.forEach((d,i)=>{
+  const src=r.days[i]||{};
+  d.title=src.title||'';
+  d.items=Array.isArray(src.items)?src.items.map(x=>norm(x,dest)):[];
+});
+if(days.some(d=>!d.items.length))throw{code:'invalid_plan',message:'The AI returned one or more days without itinerary items.'};
 if(NB)days.forEach(d=>d.items.forEach(x=>{const c=NB.idx.get(x.title.toLowerCase());if(c){x.lat=c.lat;x.lon=c.lon;x.oh=c.oh;x.site=c.site}}));
 const t={id:Date.now(),dest,mode,days,ctr:NB?NB.ctr:null,tz:WX&&WX.tz,wx:WX&&WX.d,base:stayLL||(NB&&NB.base)||(r.stay&&+r.stay.lat?{lat:+r.stay.lat,lon:+r.stay.lon}:null)};sched(t);T.unshift(t);LS('dj_t',T);cur=t;msg.textContent='';view()}
 catch(e){
