@@ -85,7 +85,7 @@ if(r.status==403)throw{code:'forbidden',message:'The Cloudflare Worker refused t
 try{j=await r.json()}catch(e){throw{code:'badreply',message:'The AI server sent an unreadable reply (HTTP '+r.status+').'}}
 if(!r.ok||j.error)throw{code:'server',message:j.error||('AI server error (HTTP '+r.status+')')};
 if(typeof j.text!='string'||!j.text.trim())throw{code:'empty',message:'The AI server returned no text.'};
-try{return parse(j.text)}catch(e){throw{code:'invalid_json',message:'The AI reply was cut off or was not valid JSON.'}}}
+try{return parse(j.text)}catch(e){throw{code:'invalid_json',message:'The AI reply was not valid JSON (length '+j.text.length+'). Start: '+j.text.slice(0,120)+' ... End: '+j.text.slice(-120)}}}
 if(window.puter){const x=await puter.ai.chat(p,{model:'claude-sonnet-4'}),c=x&&x.message?x.message.content:x;return parse(typeof c=='string'?c:Array.isArray(c)?c.map(y=>y.text||'').join(''):String(x))}
 throw{code:'none'}}
 function normalizePlan(r){
@@ -98,9 +98,9 @@ function normalizePlan(r){
     const key=Object.keys(r).find(k=>r[k]&&Array.isArray(r[k].days));
     if(key) return {...r,days:r[key].days};
   }
-  throw {code:'invalid_plan',message:'The AI returned a response, but it did not contain a valid "days" itinerary.'};
+  throw {code:'invalid_plan',message:'The AI returned JSON without a days list. It contained: '+Object.keys(r&&typeof r=='object'?r:{}).join(', ')};
 }
-const err=e=>({none:"AI isn't available in this view. Open Djiba's Trip inside the Claude app.",not_granted:'AI access was declined. Tap Plan again and allow it.',invalid_json:'The AI reply was cut off. Try fewer days or a lighter pace.',rate_limited:'Too many requests. Wait a moment.',invalid_plan:'The AI returned an invalid itinerary format. Please try again.'}[e&&e.code]||'AI error: '+((e&&(e.message||e.code))||e));
+const err=e=>{const m={none:"AI isn't available in this view. Open Djiba's Trip inside the Claude app.",not_granted:'AI access was declined. Tap Plan again and allow it.',rate_limited:'Too many requests. Wait a moment.'}[e&&e.code];return m||'AI problem: '+((e&&(e.message||e.code))||e)}
 function chips(){const x=(P.x||{})[$('#dest').value.trim().toLowerCase()]||[],h=(l,s,g)=>l.map(k=>`<button class="chip ${s.has(k)?'on':''}" data-g="${g}" data-k="${esc(k)}">${esc(k)}</button>`).join('');
 $('#ints').innerHTML=h([...new Set([...x,...BASE,...sel])],sel,'i');$('#diet').innerHTML=h(DIET,dsel,'d')}
 const fm=m=>String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
