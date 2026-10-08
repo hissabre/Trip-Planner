@@ -38,7 +38,7 @@ button{border:1px solid var(--ln);background:var(--card);border-radius:10px;padd
 .flash{outline:2px solid var(--ac)}a{color:var(--ac)}.mu{color:var(--mu);font-size:14px}[hidden]{display:none!important}
 @media print{.noprint,.it button,.tabs{display:none!important}body{background:#fff;color:#000}.card{break-inside:avoid}}
 </style></head><body><main>
-<h1>✈️ Djiba's Trip <small class="mu">v12</small></h1>
+<h1>✈️ Djiba's Trip <small class="mu">v14</small></h1>
 <div class="mu" id="ai">Checking AI…</div>
 <div class="tabs noprint"><button class="tab on" data-v="plan">Plan</button><button class="tab" data-v="trips">My trips</button></div>
 <section id="plan">
@@ -109,11 +109,25 @@ $('#ints').innerHTML=h([...new Set([...x,...BASE,...sel])],sel,'i');$('#diet').i
 const fm=m=>String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const dstr=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const hv=(a,b,c,d)=>{const r=x=>x*Math.PI/180,h=Math.sin(r(c-a)/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(r(d-b)/2)**2;return 12742*Math.asin(Math.sqrt(h))};
-function travel(a,b,m){if(!(a.lat&&b.lat))return 20;const[sp,ov]=SP[m],k=hv(a.lat,a.lon,b.lat,b.lon);return m=='transit'&&k<1.5?Math.round(k/4.5*60)+2:Math.round(k/sp*60)+ov}
-function sched(t){t.days.forEach(d=>{let c=570;d.items.forEach((it,i)=>{const pv=i?d.items[i-1]:t.base,ml=/^(food|cafe)$/.test(it.type);it.tr=pv?travel(pv,it,t.mode):0;
-if(it.at&&(!d.flow||it.fixed))it.s=it.at;else{c+=it.tr;it.s=d.flow&&ml&&it.at?Math.max(c,it.at):c}
+const LG=(()=>{try{return JSON.parse(localStorage.getItem('dj_l')||'{}')}catch(e){return{}}})(),lk=(a,b,p)=>p+a.lat.toFixed(4)+','+a.lon.toFixed(4)+'>'+b.lat.toFixed(4)+','+b.lon.toFixed(4);
+function travel(a,b,m){if(!(a.lat&&b.lat)){travel.est=1;travel.ic='🚕';return 20}
+const c=LG[lk(a,b,'c')],f=LG[lk(a,b,'f')];travel.est=0;
+if(m=='transit'){if(f!=null&&f<=900){travel.ic='🚶';return Math.round(f/60)+1}if(c!=null){travel.ic='🚌';return Math.round(c*1.4/60)+8}}
+else if(c!=null){travel.ic='🚕';return Math.round(c/60)+(m=='uber'?5:8)}
+travel.est=1;const[sp,ov]=SP[m],k=hv(a.lat,a.lon,b.lat,b.lon);travel.ic=m=='transit'?(k<1.5?'🚶':'🚌'):'🚕';return m=='transit'&&k<1.5?Math.round(k/4.5*60)+2:Math.round(k/sp*60)+ov}
+const R_HOSTS=[['c','https://routing.openstreetmap.de/routed-car'],['f','https://routing.openstreetmap.de/routed-foot']];
+async function legs(t,di){const d=t.days[di],pts=[t.base,...d.items].filter(x=>x&&x.lat);if(pts.length<2||!navigator.onLine)return false;
+const u=pts.map(p=>p.lon.toFixed(5)+','+p.lat.toFixed(5)).join(';'),need=t.mode=='transit'?['c','f']:['c'];let ok=false;
+for(const[pf_,host] of R_HOSTS.filter(h=>need.includes(h[0]))){const urls=[`${host}/table/v1/driving/${u}?annotations=duration`];if(pf_=='c')urls.push(`https://router.project-osrm.org/table/v1/driving/${u}?annotations=duration`);
+for(const url of urls){try{const j=await jget(url);j.durations.forEach((row,i)=>row.forEach((v,k)=>{if(v!=null&&i!=k)LG[lk(pts[i],pts[k],pf_)]=v}));ok=true;break}catch(e){}}}
+const ks=Object.keys(LG);if(ks.length>4000)ks.slice(0,ks.length-4000).forEach(k=>delete LG[k]);try{localStorage.setItem('dj_l',JSON.stringify(LG))}catch(e){}return ok}
+function ensureLegs(t){const di=cd,d=t.days[di];if(!d||!navigator.onLine)return;const pts=[t.base,...d.items].filter(x=>x&&x.lat),k='l'+t.id+di+t.mode+pts.map(p=>p.lat.toFixed(3)+p.lon.toFixed(3)).join('');
+if(pf[k]||pts.length<2)return;if(pts.every((p,i)=>!i||LG[lk(pts[i-1],p,t.mode=='transit'?'f':'c')]!=null)){pf[k]=1;return}
+pf[k]=1;legs(t,di).then(ok=>{if(ok){sched(t);LS('dj_t',T);if(cur===t&&!$('#view').hidden)view()}})}
+function sched(t){t.days.forEach(d=>{let c=570;d.items.forEach((it,i)=>{const pv=i?d.items[i-1]:t.base,ml=/^(food|cafe)$/.test(it.type);it.tr=pv?travel(pv,it,t.mode):0;it.te=pv?travel.est:0;it.ti=travel.ic;
+if(it.at&&(!d.flow||it.fixed||it.anch))it.s=it.at;else{c+=it.tr;it.s=d.flow&&ml&&it.at?Math.max(c,it.at):c}
 it.gap=i?it.s-(d.items[i-1].s+d.items[i-1].dur)-it.tr:null;c=it.s+it.dur})})}
-const norm=(x,dest)=>{const m=/^(\d{1,2}):(\d\d)$/.exec(x.at||'');return{title:String(x.title||'Stop'),k:x.emoji||'📍',type:x.type||'visit',dur:+x.dur||90,lat:+x.lat||0,lon:+x.lon||0,detail:x.detail||'',warn:x.warn||'',ok:!!x.confirmed,fixed:!!x.confirmed,area:x.area||'',addr:x.addr||'',at:m?+m[1]*60+ +m[2]:0,q:[x.title,x.addr||x.area,dest].join(' ')}};
+const norm=(x,dest)=>{const m=/^(\d{1,2}):(\d\d)$/.exec(x.at||'');return{title:String(x.title||'Stop'),k:x.emoji||'📍',type:x.type||'visit',dur:+x.dur||90,lat:+x.lat||0,lon:+x.lon||0,detail:x.detail||'',warn:x.warn||'',ok:!!x.confirmed,fixed:!!x.confirmed,anch:!!(x.at&&/maghrib|dhuhr|zuhr|\basr\b|fajr|\bisha\b|prière|prayer|salat|\bmatch\b|\bgame\b|concert|\bshow\b|sunset|coucher du soleil|réserv|booking|booked/i.test(String(x.title||''))),area:x.area||'',addr:x.addr||'',at:m?+m[1]*60+ +m[2]:0,q:[x.title,x.addr||x.area,dest].join(' ')}};
 document.addEventListener('click',e=>{const pn=e.target.closest('[data-pin]');if(pn){if(moved)return;const[a,c]=pn.dataset.pin.split(',').map(Number);cd=a;view();const el=document.getElementById('it-'+a+'-'+c);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash')}return}
 const b=e.target.closest('button');if(!b)return;if(b.dataset.sg!=null){const x=sugs[+b.dataset.sg];$('#stay').value=x.t;stayLL={lat:x.lat,lon:x.lon};$('#sug').hidden=true}if(b.dataset.day!=null){cd=+b.dataset.day;view()}if(b.dataset.map){mapAll=!mapAll;view()}if(b.dataset.mz){const z=b.dataset.mz;if(z=='fit'){mv=null;redraw()}else if(z=='big'){mapBig=!mapBig;mv=null;view()}else{const sv=mapSvg(),rc=sv.getBoundingClientRect();zoomAt(rc.left+rc.width/2,rc.top+rc.height/2,+z)}}
 if(b.dataset.g){const s=b.dataset.g=='i'?sel:dsel,k=b.dataset.k;s.has(k)?s.delete(k):s.add(k);b.classList.toggle('on')}
@@ -139,14 +153,14 @@ for(let d=new Date(a+'T00:00');dstr(d)<=b&&days.length<7;d.setDate(d.getDate()+1
 const seen=T.filter(x=>x.dest.toLowerCase()==dest.toLowerCase()).flatMap(x=>x.days.flatMap(d=>d.items.map(i=>i.title))).slice(0,40),must=$('#cust').value.split('\n').map(s=>s.trim()).filter(Boolean);
 const who=$('#who').value,bud=$('#bud').value,pray=$('#pray').checked;P={...P,who,bud,pray};LS('dj_p',P);
 let NB=null,WX=null;msg.textContent='🛰️ Finding real places near you…';try{NB=await gather(dest,stay,ints,diet,a,b)}catch(e){}
-WX=NB?NB.wx:null;
+WX=NB?NB.wx:null;const PT={};if(pray&&NB)await Promise.all(days.map(async d=>{const v=await ptimes(NB.ctr,d.date);if(v)PT[d.date]=v}));
 const nbLine=NB?`VERIFIED NEARBY PLACES (OpenStreetMap):\n${NB.lines}\n`:'',
 wxLine=WX&&Object.keys(WX.d).length?'Forecast: '+days.map(d=>WX.d[d.date]?d.date+' '+WX.d[d.date].hi+'/'+WX.d[d.date].lo+'C rain '+WX.d[d.date].p+'%':'').filter(Boolean).join('; ')+'. Indoor plans on rainy or very hot days.\n':'';
 const prompt=`You plan trips. Trip to ${dest}. Staying: ${stay||'city centre'}${stayLL?' (lat '+stayLL.lat+', lon '+stayLL.lon+')':''}. Days: ${days.map(d=>d.date+' '+new Date(d.date+'T00:00').toLocaleDateString('en',{weekday:'short'})).join(', ')}.
-Interests: ${ints.join(', ')||'balanced mix'}. Diet: ${diet.join(', ')||'none'}. Transport: ${mode}. Travelling: ${who}, ${bud} budget. ${pray?'Keep Dhuhr, Asr and Maghrib windows free of long stops. ':''}
+Interests: ${ints.join(', ')||'balanced mix'}. Diet: ${diet.join(', ')||'none'}. Transport: ${mode}. Travelling: ${who}, ${bud} budget. ${pray&&Object.keys(PT).length?'EXACT prayer times (never guess others): '+days.map(d=>PT[d.date]?d.date+' '+PT[d.date]:'').filter(Boolean).join('; ')+'. Do NOT add prayer rows. Just keep about 30 min free around Dhuhr, Asr and Maghrib and avoid long travel then. ':pray?'Leave time for prayers (Dhuhr, Asr, Maghrib) but do NOT add prayer rows. ':''}
 ${wxLine}Per day: exactly ${n} activities + lunch + one afternoon treat stop (bubble tea, ice cream, coffee, pastry...) + dinner.
 Traveller's fixed plans (CONFIRMED, keep their times): ${must.join('; ')||'none'}. Already done before, skip: ${seen.slice(0,15).join('; ')||'none'}.
-${nbLine}RULES: Only real, currently operating, exactly named places, never generic names. Prefer places from the list (copy the name exactly); use others only if you are sure they exist. Each day in 1-2 adjacent areas, ordered without backtracking, realistic travel time. Lunch 12:00-14:00, treat 15:30-17:00 near the previous stop, dinner 19:00-20:30; meals must fit the diet (otherwise warn to call ahead). Respect opening days and hours, vary the energy. Write in ${lang}.
+${nbLine}RULES: Items must be in chronological order. Do NOT add travel, departure, return or transport rows (the app computes travel time). Only real, currently operating, exactly named places, never generic names. Prefer places from the list (copy the name exactly); use others only if you are sure they exist. Each day in 1-2 adjacent areas, ordered without backtracking, realistic travel time. Lunch 12:00-14:00, treat 15:30-17:00 near the previous stop, dinner 19:00-20:30; meals must fit the diet (otherwise warn to call ahead). Respect opening days and hours, vary the energy. Write in ${lang}.
 Return ONLY JSON, no markdown: {"stay":[lat,lon],"days":[{"date":"YYYY-MM-DD","title":"Weekday date - Area > Area","items":[["HH:MM","type","Exact name","area",minutes,"practical note max 18 words (price, booking, tip)","warning only for a real problem plus fix, else empty",confirmedTrueOrFalse,lat,lon]]}]}
 type is one of sport,visit,wellness,food,cafe,health,business,transit,shopping. Use lat 0 and lon 0 for places that are in the list.`;
 $('#go').disabled=true;msg.textContent=fast?'Planning… usually 15-30 seconds ⏳':'Planning… up to a minute ⏳';
@@ -156,11 +170,12 @@ if(!Array.isArray(r.days)||!r.days.length)throw{code:'invalid_plan',message:'The
 days.forEach((d,i)=>{
   const src=r.days[i]||{};
   d.title=src.title||'';
-  d.items=Array.isArray(src.items)?src.items.map(x=>norm(unarr(x),dest)):[];
+  d.items=Array.isArray(src.items)?src.items.map(unarr).filter(x=>x.type!='transit'||x.confirmed).map(x=>norm(x,dest)):[];
+  if(d.items.length&&d.items.every(x=>x.at))d.items.sort((x,y)=>x.at-y.at);
 });
 if(days.some(d=>!d.items.length))throw{code:'invalid_plan',message:'The AI returned one or more days without itinerary items.'};
 if(NB)days.forEach(d=>d.items.forEach(x=>{const c=NB.idx.get(x.title.toLowerCase());if(c){x.lat=c.lat;x.lon=c.lon;x.oh=c.oh;x.site=c.site;x.k=c.k}}));
-const t={id:Date.now(),dest,mode,days,ctr:NB?NB.ctr:null,tz:WX&&WX.tz,wx:WX&&WX.d,base:stayLL||(NB&&NB.base)||(Array.isArray(r.stay)&&+r.stay[0]?{lat:+r.stay[0],lon:+r.stay[1]}:r.stay&&+r.stay.lat?{lat:+r.stay.lat,lon:+r.stay.lon}:null)};sched(t);T.unshift(t);LS('dj_t',T);cur=t;msg.textContent='';view()}
+const t={id:Date.now(),dest,mode,days,ctr:NB?NB.ctr:null,tz:WX&&WX.tz,wx:WX&&WX.d,pt:Object.keys(PT).length?PT:undefined,base:stayLL||(NB&&NB.base)||(Array.isArray(r.stay)&&+r.stay[0]?{lat:+r.stay[0],lon:+r.stay[1]}:r.stay&&+r.stay.lat?{lat:+r.stay.lat,lon:+r.stay.lon}:null)};sched(t);T.unshift(t);LS('dj_t',T);cur=t;msg.textContent='';view()}
 catch(e){
 console.error(e);
 msg.textContent=err(e);
@@ -178,7 +193,8 @@ let cd=0,mapAll=false,shS=null,showAll=false;
 const COL=['#e4572e','#2e86ab','#3bb273','#9b5de5','#f5a623','#00a6a6','#d1478a'],my=la=>Math.log(Math.tan(Math.PI/4+la*Math.PI/360))*180/Math.PI;
 const toast=(m,ms=4500)=>{const e=$('#toast');e.textContent=m;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,ms)};
 const pc=(t,a)=>a.reduce((s,x,i)=>s+(i?travel(a[i-1],x,t.mode):(t.base?travel(t.base,x,t.mode):0)),0);
-function conf(t,di){const o=[];t.days[di].items.forEach(it=>{if(it.gap!=null&&it.gap<0)o.push(it.title+': '+(fr()?'il manque ':'short by ')+(-it.gap)+' min');if(it.oh&&openAt(it.oh,t.days[di].date,it.s)===false)o.push(it.title+': '+(fr()?'fermé selon OSM (':'closed per OSM hours (')+it.oh+')');if(it.tr>40)o.push(it.title+': '+it.tr+' min '+(fr()?'de trajet':'travel, long hop'));if(it.s+it.dur>1410)o.push(it.title+': '+(fr()?'finit après 23h30':'ends after 23:30'))});return o}
+function conf(t,di){const o=[];t.days[di].items.forEach(it=>{if(it.gap!=null&&it.gap<0)o.push(it.title+': '+(fr()?'il manque ':'short by ')+(-it.gap)+' min');if(it.oh&&openAt(it.oh,t.days[di].date,it.s)===false)o.push(it.title+': '+(fr()?'fermé selon OSM (':'closed per OSM hours (')+it.oh+')');if(it.tr>40)o.push(it.title+': '+it.tr+' min '+(fr()?'de trajet':'travel, long hop'));if(it.s+it.dur>1410)o.push(it.title+': '+(fr()?'finit après 23h30':'ends after 23:30'))});const pz=(t.pt||{})[t.days[di].date];if(P.pray&&pz)[...pz.matchAll(/(Dhuhr|Asr|Maghrib) (\d\d):(\d\d)/g)].forEach(m=>{const pm=+m[2]*60+ +m[3];t.days[di].items.forEach(it=>{if(it.type!='food'&&it.type!='cafe'&&it.dur>=45&&it.s<=pm&&it.s+it.dur>pm+10&&!/prière|prayer|maghrib|dhuhr|asr/i.test(it.title))o.push(it.title+': '+(fr()?'chevauche ':'overlaps ')+m[1]+' '+m[2]+':'+m[3])})});
+return o}
 function done(d,b4){$('#sh').hidden=true;sched(cur);LS('dj_t',T);view();const c=conf(cur,d);toast(c.length>b4?'⚠️ '+c[0]+(c.length>1?' (+'+(c.length-1)+')':''):'✅ No new conflicts')}
 let mv=null,mapBig=false,ptrs=new Map(),pinch=null,moved=false,downPin=null,raf=0;
 const MW=360,MH=()=>mapBig?520:260;
@@ -209,8 +225,8 @@ function dayHTML(t,di){const d=t.days[di],loc=d.items.filter(x=>x.lat),tr=d.item
 return `<div class="dh">${esc(d.title||('Day '+(di+1)+' · '+d.date))}</div><div class="mu">${wxs(t,d.date)}🚕 ${tr} min · ${km.toFixed(1)} km · ✔ ${d.items.filter(x=>x.done).length}/${d.items.length}</div>${prs(t,d.date)}
 <div class="bar noprint"><button data-a="opt" data-d="${di}">🧭 Optimize route</button><button data-a="add" data-d="${di}">＋ Add stop</button></div>`+
 (cf.length?`<div class="cf">⚠️ ${cf.map(esc).join('<br>')}</div>`:'')+
-d.items.map((it,i)=>`<div class="card it${it.done?' dn':''}" id="it-${di}-${i}"><input type="checkbox" class="ck" data-ck="${di},${i}" ${it.done?'checked':''}><span class="t">${fm(it.s)}</span><span class="n"><span class="nb" style="background:${COL[di%7]}">${i+1}</span><span class="ty t-${esc(it.type||'visit')}">${tl(it.type)}</span> ${it.ok?'<span class="ok">✅ '+(fr()?'Confirmé':'Confirmed')+'</span>':it.fixed?'📌':''}<br>${it.k} <b>${esc(it.title)}</b>${it.detail?'<small>'+esc(it.detail)+'</small>':''}${it.more?'<small>'+esc(it.more)+'</small>':''}${it.warn?'<div class="w">⚠️ '+esc(it.warn)+'</div>':''}${it.gap!=null&&it.gap<0?'<div class="w">⏱ '+(fr()?'Il manque ':'Short by ')+(-it.gap)+' min</div>':''}<small>${it.tr?'🚕 '+it.tr+' min · ':''}${it.dur} min · ${esc(it.area||'')} · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(it.q)}" target="_blank" rel="noopener">map</a>${/^https?:/.test(it.site||'')?' · <a href="'+esc(it.site)+'" target="_blank" rel="noopener">web</a>':''}</small></span><button data-a="open" data-d="${di}" data-i="${i}">⋯</button></div>`).join('')}
-function view(){show('view');const t=cur;if(cd>=t.days.length)cd=0;
+d.items.map((it,i)=>`<div class="card it${it.done?' dn':''}" id="it-${di}-${i}"><input type="checkbox" class="ck" data-ck="${di},${i}" ${it.done?'checked':''}><span class="t">${fm(it.s)}</span><span class="n"><span class="nb" style="background:${COL[di%7]}">${i+1}</span><span class="ty t-${esc(it.type||'visit')}">${tl(it.type)}</span> ${it.ok?'<span class="ok">✅ '+(fr()?'Confirmé':'Confirmed')+'</span>':it.fixed?'📌':''}<br>${it.k} <b>${esc(it.title)}</b>${it.detail?'<small>'+esc(it.detail)+'</small>':''}${it.more?'<small>'+esc(it.more)+'</small>':''}${it.warn?'<div class="w">⚠️ '+esc(it.warn)+'</div>':''}${it.gap!=null&&it.gap<0?'<div class="w">⏱ '+(fr()?'Il manque ':'Short by ')+(-it.gap)+' min</div>':''}<small>${it.tr?(it.ti||'🚕')+' '+(it.te?'~':'')+it.tr+' min · ':''}${it.dur} min · ${esc(it.area||'')} · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(it.q)}" target="_blank" rel="noopener">map</a>${/^https?:/.test(it.site||'')?' · <a href="'+esc(it.site)+'" target="_blank" rel="noopener">web</a>':''}</small></span><button data-a="open" data-d="${di}" data-i="${i}">⋯</button></div>`).join('')}
+function view(){show('view');const t=cur;if(cd>=t.days.length)cd=0;ensureLegs(t);
 if(navigator.onLine){if(!t.wx&&!pf['w'+t.id]&&(t.ctr||t.base)){pf['w'+t.id]=1;wx(t.ctr||t.base,t.days[0].date,t.days[t.days.length-1].date).then(v=>{if(v){t.wx=v.d;t.tz=t.tz||v.tz;LS('dj_t',T);if(cur===t&&!$('#view').hidden)view()}})}
 if(P.pray)t.days.forEach(d=>{t.pt=t.pt||{};if(!t.pt[d.date]&&!pf[t.id+d.date]){pf[t.id+d.date]=1;prayer(t,d.date)}})}
 $('#view').innerHTML=`<div class="top noprint"><button data-o="back">←</button><h1>📍 ${esc(t.dest)}</h1></div>
@@ -303,6 +319,7 @@ async function wx(ctr,a,b){const u=`https://api.open-meteo.com/v1/forecast?latit
 try{const j=await jget(u+`&start_date=${a}&end_date=${b}`),d={};j.daily.time.forEach((x,i)=>d[x]={c:j.daily.weathercode[i],hi:Math.round(j.daily.temperature_2m_max[i]),lo:Math.round(j.daily.temperature_2m_min[i]),p:j.daily.precipitation_probability_max[i]});return{tz:j.timezone,d}}
 catch(e){try{const j=await jget(u+'&forecast_days=1');return{tz:j.timezone,d:{}}}catch(x){return null}}}
 const wxs=(t,date)=>{const w=(t.wx||{})[date];return w?wic(w.c)+' '+w.hi+'°/'+w.lo+'° · 💧'+w.p+'% · ':''},prs=(t,date)=>P.pray&&t.pt&&t.pt[date]?'<div class="mu">🕌 '+t.pt[date]+'</div>':'';
+async function ptimes(ctr,date){try{const[y,m,d]=date.split('-'),j=await jget(`https://api.aladhan.com/v1/timings/${d}-${m}-${y}?latitude=${ctr.lat}&longitude=${ctr.lon}&method=2`),q=j.data.timings;return['Fajr','Dhuhr','Asr','Maghrib','Isha'].map(k=>k+' '+q[k].slice(0,5)).join(' · ')}catch(e){return null}}
 async function prayer(t,date){try{const c=t.ctr||t.base||t.days[0].items.find(x=>x.lat);if(!c)return;const[y,m,d]=date.split('-'),j=await jget(`https://api.aladhan.com/v1/timings/${d}-${m}-${y}?latitude=${c.lat}&longitude=${c.lon}&method=2`),q=j.data.timings;
 (t.pt=t.pt||{})[date]=['Fajr','Dhuhr','Asr','Maghrib','Isha'].map(k=>k+' '+q[k].slice(0,5)).join(' · ');LS('dj_t',T);if(cur===t&&!$('#view').hidden)view()}catch(e){}}
 async function gather(dest,stay,ints,diet,a,b){const dc=await geo(dest);if(!dc)return null;let base=stayLL;if(!base&&stay){const g=await geo(stay+' '+dest);if(g)base={lat:g.lat,lon:g.lon}}
@@ -344,14 +361,14 @@ const r=await ask(`Trip to ${t.dest}, one day's plan:\n${ctx}\n${wish?'The trave
 const x=norm(r,t.dest);if(wish&&x.at&&/\d{1,2}\s?[:h]/.test(wish))x.fixed=true;
 let bp=d.items.length,bc=1e9;for(let k=0;k<=d.items.length;k++){const a=d.items.slice();a.splice(k,0,x);const c=pc(t,a);if(c<bc){bc=c;bp=k}}
 d.items.splice(bp,0,x);d.flow=true;done(di,b4)}catch(e){toast(err(e))}}
-function optimize(di){const t=cur,d=t.days[di],it=d.items,mv=[];it.forEach((x,i)=>{if(!x.fixed&&x.lat&&!/^(food|cafe)$/.test(x.type))mv.push(i)});if(mv.length<2)return 0;
+function optimize(di){const t=cur,d=t.days[di],it=d.items,mv=[];it.forEach((x,i)=>{if(!x.fixed&&!x.anch&&x.lat&&!/^(food|cafe)$/.test(x.type))mv.push(i)});if(mv.length<2)return 0;
 const m=mv.slice(0,6),base=pc(t,it),perm=(a,k=[])=>a.length?a.flatMap((v,i)=>perm([...a.slice(0,i),...a.slice(i+1)],[...k,v])):[k];let best=it,bc=base;
 perm(m.map(i=>it[i])).forEach(q=>{const a=it.slice();m.forEach((sl,j)=>a[sl]=q[j]);const c=pc(t,a);if(c<bc){bc=c;best=a}});
-d.items=best;d.flow=true;sched(t);return base-bc}
+d.items=best;d.flow=true;sched(t);d.items.sort((x,y)=>x.s-y.s);sched(t);return base-bc}
 function act(a,d,i){const t=cur,day=t.days[d],it=day.items,b4=conf(t,d).length,w=()=>($('#shw')||{}).value||'';
 if(a=='more')return more(d,i);if(a=='tweak')return tweak();if(a=='guide')return guide();if(a=='gcal')return gcal(d,i);if(a=='open')return sheet(d,i);if(a=='close'){$('#sh').hidden=true;return}if(a=='add')return sheet(d,0,1);
 if(a=='addgo'||a=='addrand')return addStop(d,a=='addgo'?w().trim():'');if(a=='swap')return repl(d,i,w().trim());
-if(a=='opt'){const g=optimize(d);LS('dj_t',T);view();return toast(g>0?'🧭 Saved about '+Math.round(g)+' min of travel':'✅ Already an efficient route')}
+if(a=='opt'){toast('Checking real travel times… ⏳',20000);return legs(t,d).then(()=>{const g=optimize(d);LS('dj_t',T);view();toast(g>0?'🧭 Saved about '+Math.round(g)+' min of travel':'✅ Already an efficient route')})}
 if(a=='rm')it.splice(i,1);
 else if(a=='up'||a=='dn'){const j=a=='up'?i-1:i+1;if(j<0||j>=it.length)return;[it[i],it[j]]=[it[j],it[i]]}
 else if(a=='save'){const m=/^(\d\d):(\d\d)$/.exec($('#sht').value);if(m){it[i].at=+m[1]*60+ +m[2];it[i].fixed=true}it[i].dur=+$('#shd').value||it[i].dur}
