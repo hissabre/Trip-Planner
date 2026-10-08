@@ -78,24 +78,14 @@ const boot=(async()=>{try{if(window.claude)S=await Promise.race([claude.use('sam
 status()})();
 const parse=t=>{t=String(t||'').replace(/```json|```/gi,'').trim();const s=t.search(/[\[{]/);if(s<0)throw new Error('No JSON object found');const e=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'));if(e<s)throw new Error('Incomplete JSON');return JSON.parse(t.slice(s,e+1))};
 async function ask(p,o={}){await boot;if(S)return S.json(p,o);
-if(EP()){
-try{
-const r=await fetch(EP(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,quick:o.modelTier=='quick'})});
-let j={};try{j=await r.json()}catch(e){throw{message:'The AI server returned an invalid response ('+r.status+').'}}
-if(!r.ok)throw{message:j.error||('AI server returned HTTP '+r.status)};
-if(j.error)throw{message:j.error};
-if(typeof j.text!='string'||!j.text.trim())throw{message:'The AI server returned no text.'};
-let raw=j.text.trim();
-try{return parse(raw)}
-catch(parseErr){
-  const cleaned=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
-  try{return parse(cleaned)}
-  catch(e2){throw{code:'invalid_json',message:'The AI returned text, but it was not valid itinerary JSON.'}}
-}
-}catch(e){
-if(e&&e.message)return e;
-throw{message:'Could not reach the AI server. Check your connection and try again.'}
-}}
+if(EP()){let r,j;
+try{r=await fetch(EP(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,quick:o.modelTier=='quick'})})}
+catch(e){throw{code:'net',message:'Could not reach the AI server. Check your connection, and that ALLOWED_ORIGIN in Cloudflare is exactly '+location.origin}}
+if(r.status==403)throw{code:'forbidden',message:'The Cloudflare Worker refused this site (403). Set ALLOWED_ORIGIN to exactly '+location.origin+' (no slash at the end) and click Deploy.'};
+try{j=await r.json()}catch(e){throw{code:'badreply',message:'The AI server sent an unreadable reply (HTTP '+r.status+').'}}
+if(!r.ok||j.error)throw{code:'server',message:j.error||('AI server error (HTTP '+r.status+')')};
+if(typeof j.text!='string'||!j.text.trim())throw{code:'empty',message:'The AI server returned no text.'};
+try{return parse(j.text)}catch(e){throw{code:'invalid_json',message:'The AI reply was cut off or was not valid JSON.'}}}
 if(window.puter){const x=await puter.ai.chat(p,{model:'claude-sonnet-4'}),c=x&&x.message?x.message.content:x;return parse(typeof c=='string'?c:Array.isArray(c)?c.map(y=>y.text||'').join(''):String(x))}
 throw{code:'none'}}
 function normalizePlan(r){
